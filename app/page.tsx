@@ -72,6 +72,17 @@ const IconArchive = () => (
   </svg>
 );
 
+const IconClose = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path
+      d="M6 6l12 12M18 6L6 18"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
 const IconWarn = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden style={{ flexShrink: 0, marginTop: 1 }}>
     <path d="M12 3l9 16H3l9-16z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
@@ -91,6 +102,9 @@ export default function Home() {
   const [selected, setSelected] = useState<number | null>(null);
   // 一括保存(ZIP)済みなら閉じる前の警告を出さない
   const [savedAll, setSavedAll] = useState(false);
+  // 「閉じる」確認モーダルの表示
+  const [showClose, setShowClose] = useState(false);
+  const [closed, setClosed] = useState(false);
 
   // 未保存の画像がある状態で閉じる/再読込しようとしたら警告（ブラウザ標準ダイアログ）
   useEffect(() => {
@@ -169,6 +183,31 @@ export default function Home() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     setSavedAll(true); // 一括保存済み → 閉じる前の警告を解除
+  }
+
+  // 「閉じる」ボタン：未保存なら確認モーダル、保存済みならそのまま閉じる
+  function requestClose() {
+    if (result && !savedAll) {
+      setShowClose(true);
+    } else {
+      performClose(false);
+    }
+  }
+
+  // モーダルの選択を実行。withDownload=true なら先にZIP保存してから閉じる。
+  function performClose(withDownload: boolean) {
+    if (withDownload) downloadAll();
+    setSavedAll(true);
+    setShowClose(false);
+    // DL開始に少し猶予を持たせてから閉じる試行＋画面クリア
+    const delay = withDownload ? 700 : 50;
+    window.setTimeout(() => {
+      setResult(null);
+      setSelected(null);
+      setClosed(true);
+      // スクリプトで開いたウィンドウなら閉じる。通常タブは閉じられないため画面をクリア表示。
+      window.close();
+    }, delay);
   }
 
   return (
@@ -320,6 +359,9 @@ export default function Home() {
               >
                 <IconReroll /> 再生成（リロール）
               </button>
+              <button className="btn btn-ghost" onClick={requestClose}>
+                <IconClose /> 閉じる
+              </button>
             </div>
           </div>
 
@@ -372,6 +414,59 @@ export default function Home() {
             ))}
           </div>
         </section>
+      )}
+
+      {/* 閉じる前の確認モーダル */}
+      {showClose && (
+        <div
+          className="modal-overlay"
+          onClick={() => setShowClose(false)}
+          role="presentation"
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="close-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="close-title">
+              <IconWarn /> 閉じる前に保存しますか？
+            </h3>
+            <p>
+              生成した画像はまだ保存されていません。閉じると消えます。
+              一括ダウンロード（ZIP）してから閉じますか？
+            </p>
+            <div className="modal-actions">
+              <button className="btn btn-zip" onClick={() => performClose(true)}>
+                <IconArchive /> はい：ZIP保存して閉じる
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={() => performClose(false)}
+              >
+                いいえ：そのまま閉じる
+              </button>
+              <button className="btn btn-text" onClick={() => setShowClose(false)}>
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 閉じた後の表示（通常タブはJSで閉じられないため案内を出す） */}
+      {closed && (
+        <div className="closed-note">
+          閉じました。画像は破棄されました。タブはこのまま閉じて構いません。
+          <button
+            className="btn btn-ghost"
+            onClick={() => setClosed(false)}
+            style={{ marginLeft: 12 }}
+          >
+            <IconSparkle size={15} /> 新しく作る
+          </button>
+        </div>
       )}
 
       <footer className="footnote">

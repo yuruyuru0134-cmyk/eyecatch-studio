@@ -494,6 +494,95 @@ body {
   margin-top: 12px;
 }
 
+/* ── 閉じる確認モーダル ─────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 8, 16, 0.72);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  z-index: 50;
+  animation: fade 0.15s ease;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.modal {
+  width: 100%;
+  max-width: 460px;
+  background: linear-gradient(180deg, var(--bg-card), var(--bg-elev));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 26px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.55);
+  animation: pop 0.18s ease;
+}
+
+@keyframes pop {
+  from {
+    transform: translateY(8px) scale(0.98);
+    opacity: 0;
+  }
+}
+
+.modal h3 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-family: "Outfit", sans-serif;
+  color: #fde68a;
+}
+
+.modal p {
+  margin: 0 0 22px;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal-actions .btn {
+  width: 100%;
+  padding: 13px;
+}
+
+.btn-text {
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  padding: 8px;
+}
+
+.btn-text:hover {
+  color: var(--text);
+}
+
+.closed-note {
+  margin-top: 28px;
+  padding: 16px 18px;
+  border-radius: var(--radius-sm);
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  color: #bbf7d0;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .footnote {
   margin-top: 48px;
   padding-top: 22px;
