@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { PROMPT_PROVIDER } from "@/lib/prompt";
 import {
-  ANTHROPIC_MODEL,
-  buildSystemPrompt,
-  OUTPUT_SCHEMA,
-  supportsEffort,
-  type PromptResult,
-} from "@/lib/prompt";
+  buildPromptWithClaude,
+  buildPromptWithGemini,
+} from "@/lib/providers";
 import { generateEyecatchImages } from "@/lib/images";
 
 // SDK は Node ランタイムが必要。画像3案生成のため余裕を持たせる。
@@ -19,56 +16,27 @@ interface GenerateBody {
   allowedNote?: string;
 }
 
-/** Claude でタイトルから画像生成プロンプトを組み立てる。 */
-async function buildPrompt(
-  client: Anthropic,
-  title: string,
-  allowRealEntities: boolean,
-  allowedNote: string
-): Promise<PromptResult> {
-  // 構造化出力は全モデル対応。effort は対応モデルのみ付与（Haiku 4.5 では送るとエラー）。
-  const output_config: {
-    format: { type: "json_schema"; schema: Record<string, unknown> };
-    effort?: "low";
-  } = {
-    format: {
-      type: "json_schema",
-      schema: OUTPUT_SCHEMA as unknown as Record<string, unknown>,
-    },
-  };
-  if (supportsEffort(ANTHROPIC_MODEL)) {
-    output_config.effort = "low";
-  }
-
-  const res = await client.messages.create({
-    model: ANTHROPIC_MODEL,
-    max_tokens: 1024,
-    output_config,
-    system: buildSystemPrompt(allowRealEntities, allowedNote),
-    messages: [
-      {
-        role: "user",
-        content: `記事タイトル: 「${title}」\n\nこの記事の16:9アイキャッチ画像を生成するためのプロンプトを作成してください。`,
-      },
-    ],
-  });
-
-  const text = res.content.find((b) => b.type === "text");
-  if (!text || text.type !== "text") {
-    throw new Error("Claude から有効な応答が得られませんでした。");
-  }
-  return JSON.parse(text.text) as PromptResult;
-}
-
 export async function POST(req: Request) {
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
+  const useGemini = PROMPT_PROVIDER === "gemini";
 
-  if (!anthropicKey || !geminiKey) {
+  // 画像生成は常に Gemini を使うため GEMINI_API_KEY は必須。
+  if (!geminiKey) {
     return NextResponse.json(
       {
         error:
-          "API キーが未設定です。.env.local に ANTHROPIC_API_KEY と GEMINI_API_KEY を設定してください。",
+          "GEMINI_API_KEY が未設定です。.env.local に設定してください（無料キー: https://aistudio.google.com/apikey）。",
+      },
+      { status: 500 }
+    );
+  }
+  // プロンプト組み立てに Claude を使う場合のみ ANTHROPIC_API_KEY が必要。
+  if (!useGemini && !anthropicKey) {
+    return NextResponse.json(
+      {
+        error:
+          "ANTHROPIC_API_KEY が未設定です。設定するか、無料モード（.env.local に PROMPT_PROVIDER=gemini）に切り替えてください。",
       },
       { status: 500 }
     );
@@ -101,15 +69,21 @@ export async function POST(req: Request) {
     );
   }
 
-  const client = new Anthropic({ apiKey: anthropicKey });
-
   try {
-    const prompt = await buildPrompt(
-      client,
-      title,
-      allowRealEntities,
-      allowedNote
-    );
+    const prompt = useGemini
+      ? await buildPromptWithGemini(
+          geminiKey,
+          title,
+          allowRealEntities,
+          allowedNote
+        )
+      : await buildPromptWithClaude(
+          anthropicKey as string,
+          title,
+          allowRealEntities,
+          allowedNote
+        );
+
     const images = await generateEyecatchImages(geminiKey, prompt.image_prompt);
 
     return NextResponse.json({

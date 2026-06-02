@@ -3,6 +3,15 @@
 
 export const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8";
 
+// プロンプト組み立てのプロバイダ。"claude"（案件要件・デフォルト）/ "gemini"（無料モード）。
+export const PROMPT_PROVIDER = (
+  process.env.PROMPT_PROVIDER ?? "claude"
+).toLowerCase();
+
+// 無料モードで使う Gemini テキストモデル。
+export const GEMINI_TEXT_MODEL =
+  process.env.GEMINI_TEXT_MODEL ?? "gemini-2.5-flash";
+
 /**
  * effort パラメータの対応可否。
  * Opus 4.5+ と Sonnet 4.6 のみ対応。Haiku 4.5 / Sonnet 4.5 では 400 エラーになるため除外する。
