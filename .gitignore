@@ -20,6 +20,9 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+dev.log
+*.log
+gen.json
 
 # local env files — never commit API keys
 .env

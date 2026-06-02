@@ -114,7 +114,10 @@ export default function Home() {
     const a = document.createElement("a");
     a.href = dataUrl;
     const safe = title.trim().replace(/[\\/:*?"<>|]/g, "_").slice(0, 40) || "eyecatch";
-    a.download = `${safe}_${index + 1}.jpg`;
+    // data URL の MIME から拡張子を決定（png / jpg など中身と一致させる）
+    const mime = dataUrl.match(/^data:image\/(\w+);/)?.[1] ?? "png";
+    const ext = mime === "jpeg" ? "jpg" : mime;
+    a.download = `${safe}_${index + 1}.${ext}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

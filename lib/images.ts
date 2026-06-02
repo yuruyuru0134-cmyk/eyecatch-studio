@@ -9,10 +9,22 @@ export const IMAGE_MODEL =
 
 const FLASH_FALLBACK_MODEL = "gemini-2.5-flash-image";
 const IMAGE_COUNT = 3;
-const MIME = "image/jpeg";
+const REQUEST_MIME = "image/jpeg"; // Imagen への出力フォーマット要求
 
-function toDataUrl(b64: string): string {
-  return `data:${MIME};base64,${b64}`;
+function toDataUrl(b64: string, mime = "image/png"): string {
+  return `data:${mime};base64,${b64}`;
+}
+
+// 1画像あたりの上限時間。1件が詰まっても全体を止めない（成功分だけ返す）。
+const PER_IMAGE_TIMEOUT_MS = 30_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("image generation timeout")), ms)
+    ),
+  ]);
 }
 
 /** Imagen で 16:9 を numberOfImages 枚まとめて生成。 */
@@ -27,14 +39,14 @@ async function generateWithImagen(
     config: {
       numberOfImages: IMAGE_COUNT,
       aspectRatio: "16:9",
-      outputMimeType: MIME,
+      outputMimeType: REQUEST_MIME,
     },
   });
 
   const imgs = (res.generatedImages ?? [])
-    .map((g) => g.image?.imageBytes)
-    .filter((b): b is string => Boolean(b))
-    .map(toDataUrl);
+    .map((g) => g.image)
+    .filter((img): img is NonNullable<typeof img> => Boolean(img?.imageBytes))
+    .map((img) => toDataUrl(img.imageBytes as string, img.mimeType ?? REQUEST_MIME));
 
   if (imgs.length === 0) {
     throw new Error("Imagen returned no images.");
@@ -61,14 +73,18 @@ async function generateWithFlash(
     });
     const parts = res.candidates?.[0]?.content?.parts ?? [];
     for (const p of parts) {
-      const data = (p as { inlineData?: { data?: string } }).inlineData?.data;
-      if (data) return toDataUrl(data);
+      const inline = (
+        p as { inlineData?: { data?: string; mimeType?: string } }
+      ).inlineData;
+      if (inline?.data) return toDataUrl(inline.data, inline.mimeType);
     }
     return null;
   };
 
   const settled = await Promise.allSettled(
-    Array.from({ length: IMAGE_COUNT }, () => one())
+    Array.from({ length: IMAGE_COUNT }, () =>
+      withTimeout(one(), PER_IMAGE_TIMEOUT_MS)
+    )
   );
   const imgs = settled
     .filter(
