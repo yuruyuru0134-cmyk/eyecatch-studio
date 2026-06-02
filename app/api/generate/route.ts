@@ -4,6 +4,7 @@ import {
   ANTHROPIC_MODEL,
   buildSystemPrompt,
   OUTPUT_SCHEMA,
+  supportsEffort,
   type PromptResult,
 } from "@/lib/prompt";
 import { generateEyecatchImages } from "@/lib/images";
@@ -25,17 +26,24 @@ async function buildPrompt(
   allowRealEntities: boolean,
   allowedNote: string
 ): Promise<PromptResult> {
+  // 構造化出力は全モデル対応。effort は対応モデルのみ付与（Haiku 4.5 では送るとエラー）。
+  const output_config: {
+    format: { type: "json_schema"; schema: Record<string, unknown> };
+    effort?: "low";
+  } = {
+    format: {
+      type: "json_schema",
+      schema: OUTPUT_SCHEMA as unknown as Record<string, unknown>,
+    },
+  };
+  if (supportsEffort(ANTHROPIC_MODEL)) {
+    output_config.effort = "low";
+  }
+
   const res = await client.messages.create({
     model: ANTHROPIC_MODEL,
     max_tokens: 1024,
-    // 速度優先: プロンプト組み立ては軽量タスクなので effort=low。
-    output_config: {
-      effort: "low",
-      format: {
-        type: "json_schema",
-        schema: OUTPUT_SCHEMA as unknown as Record<string, unknown>,
-      },
-    },
+    output_config,
     system: buildSystemPrompt(allowRealEntities, allowedNote),
     messages: [
       {

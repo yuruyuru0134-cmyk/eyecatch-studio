@@ -3,6 +3,14 @@
 
 export const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8";
 
+/**
+ * effort パラメータの対応可否。
+ * Opus 4.5+ と Sonnet 4.6 のみ対応。Haiku 4.5 / Sonnet 4.5 では 400 エラーになるため除外する。
+ */
+export function supportsEffort(model: string): boolean {
+  return /opus-4-(5|6|7|8)/.test(model) || /sonnet-4-6/.test(model);
+}
+
 /** 実在対象を「使わない」場合に注入する強い制約（デフォルト挙動）。 */
 const RIGHTS_STRICT = `
 RIGHTS & SAFETY CONSTRAINTS (STRICT — THIS IS THE DEFAULT, ENFORCE IT):
