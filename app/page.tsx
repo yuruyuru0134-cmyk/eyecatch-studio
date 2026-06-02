@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createZipBlob, dataUrlToBytes } from "@/lib/zip";
 
 interface GenerateResponse {
   summary: string;
@@ -63,6 +64,14 @@ const IconLock = () => (
   </svg>
 );
 
+const IconArchive = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <rect x="3" y="4" width="18" height="4" rx="1" stroke="currentColor" strokeWidth="2" />
+    <path d="M5 8v11a1 1 0 001 1h12a1 1 0 001-1V8" stroke="currentColor" strokeWidth="2" />
+    <path d="M10 12h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+
 const IconWarn = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden style={{ flexShrink: 0, marginTop: 1 }}>
     <path d="M12 3l9 16H3l9-16z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
@@ -80,12 +89,33 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateResponse | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  // 一括保存(ZIP)済みなら閉じる前の警告を出さない
+  const [savedAll, setSavedAll] = useState(false);
+
+  // 未保存の画像がある状態で閉じる/再読込しようとしたら警告（ブラウザ標準ダイアログ）
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (result && !savedAll) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [result, savedAll]);
+
+  function safeBase() {
+    return (
+      title.trim().replace(/[\\/:*?"<>|]/g, "_").slice(0, 40) || "eyecatch"
+    );
+  }
 
   async function generate() {
     if (!title.trim() || loading) return;
     setLoading(true);
     setError(null);
     setSelected(null);
+    setSavedAll(false);
 
     try {
       const res = await fetch("/api/generate", {
@@ -110,17 +140,35 @@ export default function Home() {
     }
   }
 
+  // 単発ダウンロード
   function download(dataUrl: string, index: number) {
+    const { ext } = dataUrlToBytes(dataUrl);
     const a = document.createElement("a");
     a.href = dataUrl;
-    const safe = title.trim().replace(/[\\/:*?"<>|]/g, "_").slice(0, 40) || "eyecatch";
-    // data URL の MIME から拡張子を決定（png / jpg など中身と一致させる）
-    const mime = dataUrl.match(/^data:image\/(\w+);/)?.[1] ?? "png";
-    const ext = mime === "jpeg" ? "jpg" : mime;
-    a.download = `${safe}_${index + 1}.${ext}`;
+    a.download = `${safeBase()}_${index + 1}.${ext}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  }
+
+  // 一括ダウンロード（ZIP）
+  function downloadAll() {
+    if (!result) return;
+    const base = safeBase();
+    const files = result.images.map((src, i) => {
+      const { bytes, ext } = dataUrlToBytes(src);
+      return { name: `${base}_${i + 1}.${ext}`, data: bytes };
+    });
+    const blob = createZipBlob(files);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${base}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setSavedAll(true); // 一括保存済み → 閉じる前の警告を解除
   }
 
   return (
@@ -260,11 +308,31 @@ export default function Home() {
       {result && !loading && (
         <section className="results">
           <div className="results-head">
-            <h2>生成結果（3案）</h2>
-            <button className="btn btn-ghost" onClick={generate} disabled={loading}>
-              <IconReroll /> 再生成（リロール）
-            </button>
+            <h2>生成結果（{result.images.length}案）</h2>
+            <div className="results-actions">
+              <button className="btn btn-zip" onClick={downloadAll}>
+                <IconArchive /> 一括ダウンロード（ZIP）
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={generate}
+                disabled={loading}
+              >
+                <IconReroll /> 再生成（リロール）
+              </button>
+            </div>
           </div>
+
+          {!savedAll && (
+            <div className="save-hint">
+              <IconWarn />
+              <span>
+                画像は保存されていません。タブを閉じる・再読込すると消えます。
+                残したい場合は各案を<b>単発ダウンロード</b>、または
+                <b>一括ダウンロード（ZIP）</b>で保存してください。
+              </span>
+            </div>
+          )}
 
           <div className="summary-card">
             <b>生成イメージ：</b>

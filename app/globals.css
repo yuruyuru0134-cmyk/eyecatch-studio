@@ -298,6 +298,41 @@ body {
   font-weight: 700;
 }
 
+.results-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-zip {
+  padding: 11px 18px;
+  color: #04121f;
+  background: linear-gradient(135deg, var(--accent), #7dd3fc);
+  box-shadow: 0 6px 18px var(--accent-glow);
+}
+
+.btn-zip:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px var(--accent-glow);
+}
+
+.save-hint {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  color: #fde68a;
+  font-size: 12.5px;
+}
+
+.save-hint b {
+  color: #fef3c7;
+}
+
 .summary-card {
   background: var(--bg-card);
   border: 1px solid var(--border-soft);
