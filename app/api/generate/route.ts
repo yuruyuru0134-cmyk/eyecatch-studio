@@ -10,9 +10,9 @@ import {
 } from "@/lib/providers";
 import { generateEyecatchImages } from "@/lib/images";
 
-// SDK は Node ランタイムが必要。画像3案生成のため余裕を持たせる。
+// SDK は Node ランタイムが必要。無料の flash-image は直列化で遅くなるため余裕を持たせる。
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 interface GenerateBody {
   title?: string;

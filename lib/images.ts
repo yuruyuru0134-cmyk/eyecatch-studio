@@ -16,8 +16,8 @@ function toDataUrl(b64: string, mime = "image/png"): string {
   return `data:${mime};base64,${b64}`;
 }
 
-// 1画像あたりの上限時間。1件が詰まっても全体を止めない（成功分だけ返す）。
-const PER_IMAGE_TIMEOUT_MS = 30_000;
+// 1画像あたりの上限時間。無料枠は直列化で遅くなるため長めに確保（成功分だけ返す）。
+const PER_IMAGE_TIMEOUT_MS = 50_000;
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([

@@ -35,3 +35,5 @@ gen.json
 # editor
 .vscode/
 .idea/
+
+.vercel
