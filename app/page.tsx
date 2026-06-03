@@ -1,7 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { createZipBlob, dataUrlToBytes } from "@/lib/zip";
+
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 5;
+const ZOOM_STEP = 0.25;
 
 interface GenerateResponse {
   summary: string;
@@ -112,6 +121,32 @@ const IconZoom = ({ size = 16 }: { size?: number }) => (
   </svg>
 );
 
+const IconZoomIn = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+    <path d="M21 21l-4-4M11 8v6M8 11h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+
+const IconZoomOut = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+    <path d="M21 21l-4-4M8 11h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+
+const IconFit = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path
+      d="M4 9V5a1 1 0 011-1h4M20 9V5a1 1 0 00-1-1h-4M4 15v4a1 1 0 001 1h4M20 15v4a1 1 0 01-1 1h-4"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 const IconChevron = ({ dir = "left" }: { dir?: "left" | "right" }) => (
   <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden>
     <path
@@ -139,6 +174,12 @@ export default function Home() {
   const [selected, setSelected] = useState<number | null>(null);
   // 拡大表示（ライトボックス）で表示中の画像インデックス
   const [lightbox, setLightbox] = useState<number | null>(null);
+  // ライトボックス内のズーム倍率・パン位置
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const zoomRef = useRef(1);
+  const viewerRef = useRef<HTMLDivElement>(null);
   // 一括保存(ZIP)済みなら閉じる前の警告を出さない
   const [savedAll, setSavedAll] = useState(false);
   // 「閉じる」確認モーダルの表示
@@ -173,18 +214,73 @@ export default function Home() {
     setLightbox((lightbox + delta + n) % n);
   }
 
-  // ライトボックス表示中のキー操作（Esc=閉じる, ←→=移動）
+  // ── ズーム制御 ──
+  function zoomTo(next: number) {
+    const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(next * 100) / 100));
+    setZoom(z);
+    if (z <= 1) setPan({ x: 0, y: 0 }); // 等倍に戻したらパンもリセット
+  }
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  // 画像を切り替えた / 開いた / 閉じたらズームをリセット
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [lightbox]);
+
+  // ライトボックス表示中のキー操作（Esc=閉じる, ←→=移動, +/-/0=ズーム）
   useEffect(() => {
     if (lightbox === null) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeLightbox();
       else if (e.key === "ArrowLeft") moveLightbox(-1);
       else if (e.key === "ArrowRight") moveLightbox(1);
+      else if (e.key === "+" || e.key === "=") zoomTo(zoomRef.current + ZOOM_STEP);
+      else if (e.key === "-" || e.key === "_") zoomTo(zoomRef.current - ZOOM_STEP);
+      else if (e.key === "0") zoomTo(1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lightbox, result]);
+
+  // マウスホイールでズーム（ページスクロールを抑止するため非passiveで登録）
+  useEffect(() => {
+    if (lightbox === null) return;
+    const el = viewerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const dir = e.deltaY < 0 ? 1 : -1;
+      zoomTo(zoomRef.current + dir * ZOOM_STEP);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lightbox]);
+
+  // ドラッグでパン（ズーム時のみ）
+  function onImageMouseDown(e: ReactMouseEvent) {
+    if (zoom <= 1) return;
+    e.preventDefault();
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const startX = pan.x;
+    const startY = pan.y;
+    setDragging(true);
+    const onMove = (ev: MouseEvent) => {
+      setPan({ x: startX + (ev.clientX - sx), y: startY + (ev.clientY - sy) });
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setDragging(false);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
 
   async function generate() {
     if (!title.trim() || loading) return;
@@ -557,15 +653,58 @@ export default function Home() {
             className="lightbox-figure"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={result.images[lightbox]}
-              alt={`アイキャッチ案 ${lightbox + 1}（拡大）`}
-            />
+            <div className="lightbox-viewer" ref={viewerRef}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={result.images[lightbox]}
+                alt={`アイキャッチ案 ${lightbox + 1}（拡大）`}
+                draggable={false}
+                onMouseDown={onImageMouseDown}
+                onDoubleClick={() => zoomTo(zoom > 1 ? 1 : 2)}
+                style={{
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  cursor:
+                    zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in",
+                  transition: dragging ? "none" : "transform 0.12s ease-out",
+                }}
+              />
+            </div>
+
             <figcaption className="lightbox-bar">
               <span>
                 案 {lightbox + 1} / {result.images.length}　（{result.aspectRatio}）
               </span>
+
+              {/* ズーム操作 */}
+              <div className="zoom-controls">
+                <button
+                  className="zoom-btn"
+                  onClick={() => zoomTo(zoom - ZOOM_STEP)}
+                  disabled={zoom <= ZOOM_MIN}
+                  aria-label="ズームアウト"
+                >
+                  <IconZoomOut />
+                </button>
+                <span className="zoom-pct">{Math.round(zoom * 100)}%</span>
+                <button
+                  className="zoom-btn"
+                  onClick={() => zoomTo(zoom + ZOOM_STEP)}
+                  disabled={zoom >= ZOOM_MAX}
+                  aria-label="ズームイン"
+                >
+                  <IconZoomIn />
+                </button>
+                <button
+                  className="zoom-btn"
+                  onClick={() => zoomTo(1)}
+                  disabled={zoom === 1 && pan.x === 0 && pan.y === 0}
+                  aria-label="フィット（等倍に戻す）"
+                  title="フィット"
+                >
+                  <IconFit />
+                </button>
+              </div>
+
               <button
                 className="btn btn-download"
                 style={{ width: "auto", padding: "9px 16px" }}
