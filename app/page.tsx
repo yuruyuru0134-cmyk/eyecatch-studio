@@ -7,7 +7,22 @@ interface GenerateResponse {
   summary: string;
   style: string;
   promptUsed: string;
+  aspectRatio: string;
   images: string[];
+}
+
+// 選択可能なアスペクト比（ラベル付き）
+const ASPECT_OPTIONS = [
+  { value: "16:9", label: "16:9", hint: "横長・記事/OGP" },
+  { value: "1:1", label: "1:1", hint: "正方形・SNS" },
+  { value: "4:3", label: "4:3", hint: "横長・標準" },
+  { value: "3:4", label: "3:4", hint: "縦長・標準" },
+  { value: "9:16", label: "9:16", hint: "縦長・ストーリー" },
+] as const;
+
+// "16:9" → "16 / 9"（CSS の aspect-ratio 用）
+function cssRatio(r: string): string {
+  return r.replace(":", " / ");
 }
 
 // ── インラインSVGアイコン（容量低減のため外部ライブラリ不使用）──
@@ -90,16 +105,40 @@ const IconWarn = () => (
   </svg>
 );
 
+const IconZoom = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+    <path d="M21 21l-4-4M11 8v6M8 11h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+
+const IconChevron = ({ dir = "left" }: { dir?: "left" | "right" }) => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path
+      d={dir === "left" ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7"}
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 export default function Home() {
   const [title, setTitle] = useState("");
   // 「実在の人物・物を使用しない」= デフォルトON（= 許可しない が初期状態）
   const [blockReal, setBlockReal] = useState(true);
   const [allowedNote, setAllowedNote] = useState("");
 
+  // アスペクト比（デフォルト 16:9）
+  const [aspectRatio, setAspectRatio] = useState<string>("16:9");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateResponse | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  // 拡大表示（ライトボックス）で表示中の画像インデックス
+  const [lightbox, setLightbox] = useState<number | null>(null);
   // 一括保存(ZIP)済みなら閉じる前の警告を出さない
   const [savedAll, setSavedAll] = useState(false);
   // 「閉じる」確認モーダルの表示
@@ -124,6 +163,29 @@ export default function Home() {
     );
   }
 
+  // ライトボックスの開閉・前後移動
+  function closeLightbox() {
+    setLightbox(null);
+  }
+  function moveLightbox(delta: number) {
+    if (lightbox === null || !result) return;
+    const n = result.images.length;
+    setLightbox((lightbox + delta + n) % n);
+  }
+
+  // ライトボックス表示中のキー操作（Esc=閉じる, ←→=移動）
+  useEffect(() => {
+    if (lightbox === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeLightbox();
+      else if (e.key === "ArrowLeft") moveLightbox(-1);
+      else if (e.key === "ArrowRight") moveLightbox(1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lightbox, result]);
+
   async function generate() {
     if (!title.trim() || loading) return;
     setLoading(true);
@@ -140,6 +202,7 @@ export default function Home() {
           // UI上は「使用しない」を保持。APIは allowRealEntities で受ける。
           allowRealEntities: !blockReal,
           allowedNote: !blockReal ? allowedNote : "",
+          aspectRatio,
         }),
       });
       const data = (await res.json()) as GenerateResponse & { error?: string };
@@ -223,8 +286,8 @@ export default function Home() {
         </div>
         <p className="tagline">
           記事タイトルを入力すると、Claude がプロンプトを組み立て、Gemini が
-          16:9 のアイキャッチ画像を 3 案生成します。気に入った案を選んでダウンロード、
-          納得いくまで再生成できます。
+          お好みのアスペクト比でアイキャッチ画像を 3 案生成します。クリックで拡大表示、
+          気に入った案をダウンロード、納得いくまで再生成できます。
         </p>
       </header>
 
@@ -298,6 +361,31 @@ export default function Home() {
           )}
         </div>
 
+        {/* ── アスペクト比 選択 ── */}
+        <div className="ratio-block">
+          <span className="field-label">アスペクト比</span>
+          <div className="ratio-group" role="radiogroup" aria-label="アスペクト比">
+            {ASPECT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={aspectRatio === opt.value}
+                className="ratio-btn"
+                data-on={aspectRatio === opt.value}
+                onClick={() => setAspectRatio(opt.value)}
+              >
+                <span
+                  className="ratio-icon"
+                  style={{ aspectRatio: cssRatio(opt.value) }}
+                />
+                <span className="ratio-label">{opt.label}</span>
+                <span className="ratio-hint">{opt.hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <button
           className="btn btn-primary"
           onClick={generate}
@@ -323,9 +411,13 @@ export default function Home() {
             Claude がプロンプトを組み立て、Gemini が 3 案を描いています…
           </div>
           <div className="loading-grid">
-            <div className="skeleton" />
-            <div className="skeleton" />
-            <div className="skeleton" />
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="skeleton"
+                style={{ aspectRatio: cssRatio(aspectRatio) }}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -387,9 +479,18 @@ export default function Home() {
               <div className="shot" key={i} data-selected={selected === i}>
                 <div
                   className="shot-img-wrap"
-                  onClick={() => setSelected(selected === i ? null : i)}
+                  style={{ aspectRatio: cssRatio(result.aspectRatio) }}
+                  onClick={() => setLightbox(i)}
+                  title="クリックで拡大表示"
                 >
-                  <span className="shot-pick">
+                  {/* 選択トグル（バッジ）。拡大とは独立して動かす */}
+                  <button
+                    className="shot-pick"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelected(selected === i ? null : i);
+                    }}
+                  >
                     {selected === i ? (
                       <>
                         <IconCheck /> 選択中
@@ -397,6 +498,9 @@ export default function Home() {
                     ) : (
                       `案 ${i + 1}`
                     )}
+                  </button>
+                  <span className="shot-zoom">
+                    <IconZoom /> 拡大
                   </span>
                   {/* 生成画像はbase64 data URL。next/imageは不要。 */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -414,6 +518,77 @@ export default function Home() {
             ))}
           </div>
         </section>
+      )}
+
+      {/* 拡大表示（ライトボックス） */}
+      {lightbox !== null && result && (
+        <div
+          className="lightbox-overlay"
+          onClick={closeLightbox}
+          role="dialog"
+          aria-modal="true"
+          aria-label="画像の拡大表示"
+        >
+          <button
+            className="lightbox-close"
+            onClick={(e) => {
+              e.stopPropagation();
+              closeLightbox();
+            }}
+            aria-label="閉じる"
+          >
+            <IconClose />
+          </button>
+
+          {result.images.length > 1 && (
+            <button
+              className="lightbox-nav prev"
+              onClick={(e) => {
+                e.stopPropagation();
+                moveLightbox(-1);
+              }}
+              aria-label="前の画像"
+            >
+              <IconChevron dir="left" />
+            </button>
+          )}
+
+          <figure
+            className="lightbox-figure"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={result.images[lightbox]}
+              alt={`アイキャッチ案 ${lightbox + 1}（拡大）`}
+            />
+            <figcaption className="lightbox-bar">
+              <span>
+                案 {lightbox + 1} / {result.images.length}　（{result.aspectRatio}）
+              </span>
+              <button
+                className="btn btn-download"
+                style={{ width: "auto", padding: "9px 16px" }}
+                onClick={() => download(result.images[lightbox], lightbox)}
+              >
+                <IconDownload /> ダウンロード
+              </button>
+            </figcaption>
+          </figure>
+
+          {result.images.length > 1 && (
+            <button
+              className="lightbox-nav next"
+              onClick={(e) => {
+                e.stopPropagation();
+                moveLightbox(1);
+              }}
+              aria-label="次の画像"
+            >
+              <IconChevron dir="right" />
+            </button>
+          )}
+        </div>
       )}
 
       {/* 閉じる前の確認モーダル */}

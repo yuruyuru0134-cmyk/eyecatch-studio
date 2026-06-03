@@ -3,6 +3,7 @@
 //  - gemini-*-flash-image : 無料枠で動く省コストモード（16:9はaspectRatioで指定）
 
 import { GoogleGenAI } from "@google/genai";
+import type { AspectRatio } from "@/lib/prompt";
 
 export const IMAGE_MODEL =
   process.env.GEMINI_IMAGE_MODEL ?? "imagen-4.0-generate-001";
@@ -27,18 +28,19 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
-/** Imagen で 16:9 を numberOfImages 枚まとめて生成。 */
+/** Imagen で指定アスペクト比の画像を numberOfImages 枚まとめて生成。 */
 async function generateWithImagen(
   ai: GoogleGenAI,
   model: string,
-  prompt: string
+  prompt: string,
+  aspectRatio: AspectRatio
 ): Promise<string[]> {
   const res = await ai.models.generateImages({
     model,
     prompt,
     config: {
       numberOfImages: IMAGE_COUNT,
-      aspectRatio: "16:9",
+      aspectRatio,
       outputMimeType: REQUEST_MIME,
     },
   });
@@ -54,21 +56,22 @@ async function generateWithImagen(
   return imgs;
 }
 
-/** flash 系画像モデルを並列に呼んで 3 枚生成（16:9 指定・無料枠向け）。 */
+/** flash 系画像モデルを並列に呼んで 3 枚生成（指定比率・無料枠向け）。 */
 async function generateWithFlash(
   ai: GoogleGenAI,
   model: string,
-  prompt: string
+  prompt: string,
+  aspectRatio: AspectRatio
 ): Promise<string[]> {
-  const wide = `${prompt}\n\n16:9 widescreen, landscape orientation, at least 1280x720.`;
+  const hint = `${prompt}\n\nAspect ratio ${aspectRatio}. Compose the image specifically for this ${aspectRatio} frame.`;
 
   const one = async (): Promise<string | null> => {
     const res = await ai.models.generateContent({
       model,
-      contents: wide,
+      contents: hint,
       config: {
         responseModalities: ["IMAGE"],
-        imageConfig: { aspectRatio: "16:9" },
+        imageConfig: { aspectRatio },
       },
     });
     const parts = res.candidates?.[0]?.content?.parts ?? [];
@@ -106,22 +109,28 @@ async function generateWithFlash(
  */
 export async function generateEyecatchImages(
   apiKey: string,
-  prompt: string
+  prompt: string,
+  aspectRatio: AspectRatio
 ): Promise<string[]> {
   const ai = new GoogleGenAI({ apiKey });
 
   if (IMAGE_MODEL.startsWith("imagen")) {
     try {
-      return await generateWithImagen(ai, IMAGE_MODEL, prompt);
+      return await generateWithImagen(ai, IMAGE_MODEL, prompt, aspectRatio);
     } catch (err) {
       console.warn(
         "[images] Imagen failed, falling back to flash-image:",
         err instanceof Error ? err.message : err
       );
-      return await generateWithFlash(ai, FLASH_FALLBACK_MODEL, prompt);
+      return await generateWithFlash(
+        ai,
+        FLASH_FALLBACK_MODEL,
+        prompt,
+        aspectRatio
+      );
     }
   }
 
   // flash 系（無料枠）を直接指定された場合
-  return await generateWithFlash(ai, IMAGE_MODEL, prompt);
+  return await generateWithFlash(ai, IMAGE_MODEL, prompt, aspectRatio);
 }

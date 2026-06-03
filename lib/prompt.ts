@@ -12,6 +12,24 @@ export const PROMPT_PROVIDER = (
 export const GEMINI_TEXT_MODEL =
   process.env.GEMINI_TEXT_MODEL ?? "gemini-2.5-flash";
 
+// 選択可能なアスペクト比（Imagen / flash-image いずれも対応する値）。
+export const ASPECT_RATIOS = ["1:1", "9:16", "16:9", "4:3", "3:4"] as const;
+export type AspectRatio = (typeof ASPECT_RATIOS)[number];
+export const DEFAULT_ASPECT_RATIO: AspectRatio = "16:9";
+
+export function isAspectRatio(v: unknown): v is AspectRatio {
+  return (
+    typeof v === "string" && (ASPECT_RATIOS as readonly string[]).includes(v)
+  );
+}
+
+/** 比率から向き（横長/縦長/正方形）の説明を返す（プロンプト用）。 */
+function orientationOf(ratio: AspectRatio): string {
+  if (ratio === "1:1") return "square";
+  if (ratio === "9:16" || ratio === "3:4") return "vertical portrait";
+  return "horizontal landscape";
+}
+
 /**
  * effort パラメータの対応可否。
  * Opus 4.5+ と Sonnet 4.6 のみ対応。Haiku 4.5 / Sonnet 4.5 では 400 エラーになるため除外する。
@@ -47,18 +65,21 @@ RIGHTS & SAFETY CONSTRAINTS (PERMISSIVE MODE — user takes responsibility for c
 
 export function buildSystemPrompt(
   allowRealEntities: boolean,
-  allowedNote: string
+  allowedNote: string,
+  aspectRatio: AspectRatio = DEFAULT_ASPECT_RATIO
 ): string {
   const rights = allowRealEntities ? rightsAllowed(allowedNote) : RIGHTS_STRICT;
+  const orientation = orientationOf(aspectRatio);
 
   return `
 You are an expert art director that turns a blog/article TITLE into a single, vivid
-image-generation prompt for a 16:9 article eyecatch (hero) image.
+image-generation prompt for a ${aspectRatio} (${orientation}) article eyecatch (hero) image.
 
 GOAL:
 - Produce one detailed ENGLISH prompt suitable for the Imagen / Gemini image model.
-- The image is a wide 16:9 eyecatch: visually striking, clean composition, leaves some
-  breathing room (negative space) where overlay text could go later.
+- The image is a ${aspectRatio} ${orientation} eyecatch: visually striking, clean composition,
+  with a layout that suits this aspect ratio and leaves some breathing room (negative space)
+  where overlay text could go later.
 - Convey the article's theme at a glance. Modern, professional, editorial quality.
 - Avoid generic "AI slop": no cliché purple gradients, no random floating UI, no garbled text.
 - Do NOT render readable words/letters in the image unless essential; prefer purely visual storytelling.
@@ -76,7 +97,7 @@ export const OUTPUT_SCHEMA = {
     image_prompt: {
       type: "string",
       description:
-        "A single detailed English prompt for the image model. Include subject, style, lighting, mood, composition, color palette, and that it is a 16:9 widescreen editorial eyecatch with space for text.",
+        "A single detailed English prompt for the image model. Include subject, style, lighting, mood, composition, color palette, and that it is an editorial article eyecatch composed for the requested aspect ratio with space for overlay text.",
     },
     style: {
       type: "string",

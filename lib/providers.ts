@@ -10,11 +10,12 @@ import {
   buildSystemPrompt,
   OUTPUT_SCHEMA,
   supportsEffort,
+  type AspectRatio,
   type PromptResult,
 } from "@/lib/prompt";
 
-const USER_INSTRUCTION = (title: string) =>
-  `記事タイトル: 「${title}」\n\nこの記事の16:9アイキャッチ画像を生成するためのプロンプトを作成してください。`;
+const USER_INSTRUCTION = (title: string, aspectRatio: AspectRatio) =>
+  `記事タイトル: 「${title}」\n\nこの記事の${aspectRatio}アイキャッチ画像を生成するためのプロンプトを作成してください（アスペクト比 ${aspectRatio} に合った構図にすること）。`;
 
 /** 応答テキストから JSON 部分を安全に取り出してパースする。 */
 function parsePromptResult(text: string): PromptResult {
@@ -34,7 +35,8 @@ export async function buildPromptWithClaude(
   apiKey: string,
   title: string,
   allowRealEntities: boolean,
-  allowedNote: string
+  allowedNote: string,
+  aspectRatio: AspectRatio
 ): Promise<PromptResult> {
   const client = new Anthropic({ apiKey });
 
@@ -56,8 +58,8 @@ export async function buildPromptWithClaude(
     model: ANTHROPIC_MODEL,
     max_tokens: 1024,
     output_config,
-    system: buildSystemPrompt(allowRealEntities, allowedNote),
-    messages: [{ role: "user", content: USER_INSTRUCTION(title) }],
+    system: buildSystemPrompt(allowRealEntities, allowedNote, aspectRatio),
+    messages: [{ role: "user", content: USER_INSTRUCTION(title, aspectRatio) }],
   });
 
   const text = res.content.find((b) => b.type === "text");
@@ -72,19 +74,20 @@ export async function buildPromptWithGemini(
   apiKey: string,
   title: string,
   allowRealEntities: boolean,
-  allowedNote: string
+  allowedNote: string,
+  aspectRatio: AspectRatio
 ): Promise<PromptResult> {
   const ai = new GoogleGenAI({ apiKey });
 
   const system =
-    buildSystemPrompt(allowRealEntities, allowedNote) +
+    buildSystemPrompt(allowRealEntities, allowedNote, aspectRatio) +
     `\n\nReturn ONLY a JSON object with exactly these keys: ` +
     `"image_prompt" (string), "style" (string), "japanese_summary" (string). ` +
     `No markdown, no code fences.`;
 
   const res = await ai.models.generateContent({
     model: GEMINI_TEXT_MODEL,
-    contents: USER_INSTRUCTION(title),
+    contents: USER_INSTRUCTION(title, aspectRatio),
     config: {
       systemInstruction: system,
       responseMimeType: "application/json",

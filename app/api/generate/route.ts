@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { PROMPT_PROVIDER } from "@/lib/prompt";
+import {
+  PROMPT_PROVIDER,
+  DEFAULT_ASPECT_RATIO,
+  isAspectRatio,
+} from "@/lib/prompt";
 import {
   buildPromptWithClaude,
   buildPromptWithGemini,
@@ -14,6 +18,7 @@ interface GenerateBody {
   title?: string;
   allowRealEntities?: boolean;
   allowedNote?: string;
+  aspectRatio?: string;
 }
 
 export async function POST(req: Request) {
@@ -55,6 +60,9 @@ export async function POST(req: Request) {
   const title = (body.title ?? "").trim();
   const allowRealEntities = Boolean(body.allowRealEntities);
   const allowedNote = body.allowedNote ?? "";
+  const aspectRatio = isAspectRatio(body.aspectRatio)
+    ? body.aspectRatio
+    : DEFAULT_ASPECT_RATIO;
 
   if (!title) {
     return NextResponse.json(
@@ -75,21 +83,28 @@ export async function POST(req: Request) {
           geminiKey,
           title,
           allowRealEntities,
-          allowedNote
+          allowedNote,
+          aspectRatio
         )
       : await buildPromptWithClaude(
           anthropicKey as string,
           title,
           allowRealEntities,
-          allowedNote
+          allowedNote,
+          aspectRatio
         );
 
-    const images = await generateEyecatchImages(geminiKey, prompt.image_prompt);
+    const images = await generateEyecatchImages(
+      geminiKey,
+      prompt.image_prompt,
+      aspectRatio
+    );
 
     return NextResponse.json({
       summary: prompt.japanese_summary,
       style: prompt.style,
       promptUsed: prompt.image_prompt,
+      aspectRatio,
       images,
     });
   } catch (err) {
